@@ -1,12 +1,16 @@
 // Home.jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { ChevronRight, ChevronDown, Folder, File, Plus, Upload } from 'lucide-react';
 
 function Home() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [folders, setFolders] = useState([]);
+  const [expandedFolders, setExpandedFolders] = useState({});
+  const fileInputRef = useRef({});
   
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -18,8 +22,71 @@ function Home() {
     }
     
     setUser(JSON.parse(storedUser));
+    fetchFolders();
     setLoading(false);
   }, [navigate]);
+
+  const fetchFolders = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/folders`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setFolders(response.data.folders);
+    } catch (error) {
+      console.error('Error fetching folders:', error);
+    }
+  };
+
+  const createFolder = async () => {
+    const folderName = prompt('Enter folder name:');
+    if (!folderName) return;
+
+    try {
+      const token = localStorage.getItem('authToken');
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/folders`, 
+        { name: folderName },
+        { headers: { Authorization: `Bearer ${token}` }}
+      );
+      fetchFolders();
+    } catch (error) {
+      console.error('Error creating folder:', error);
+    }
+  };
+
+  const toggleFolder = (folderId) => {
+    setExpandedFolders(prev => ({
+      ...prev,
+      [folderId]: !prev[folderId]
+    }));
+  };
+
+  const handleFileUpload = async (e, folderId) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folderId', folderId);
+
+    try {
+      const token = localStorage.getItem('authToken');
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/files/upload`,
+        formData,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+      fetchFolders();
+    } catch (error) {
+      console.error('Error uploading file:', error);
+    }
+  };
 
   const handleSignOut = () => {
     localStorage.removeItem('authToken');
@@ -59,27 +126,59 @@ function Home() {
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-white rounded-lg shadow-lg p-6">
-            <h1 className="text-3xl font-bold text-gray-800 mb-4">Welcome to Your Dashboard</h1>
-            <p className="text-gray-600">
-              You're successfully logged in. This is your protected home page.
-            </p>
-            
-            {/* Add your dashboard content here */}
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-blue-50 p-6 rounded-lg">
-                <h2 className="text-xl font-semibold text-blue-800 mb-2">Profile</h2>
-                <p className="text-blue-600">Manage your account settings and preferences</p>
-              </div>
-              
-              <div className="bg-green-50 p-6 rounded-lg">
-                <h2 className="text-xl font-semibold text-green-800 mb-2">Analytics</h2>
-                <p className="text-green-600">View your activity and statistics</p>
-              </div>
-              
-              <div className="bg-purple-50 p-6 rounded-lg">
-                <h2 className="text-xl font-semibold text-purple-800 mb-2">Settings</h2>
-                <p className="text-purple-600">Configure your application preferences</p>
-              </div>
+            <div className="flex justify-between items-center mb-6">
+              <h1 className="text-2xl font-bold text-gray-800">My Files</h1>
+              <button
+                onClick={createFolder}
+                className="flex items-center space-x-2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                <Plus size={20} />
+                <span>Create Folder</span>
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {folders.map(folder => (
+                <div key={folder._id} className="border rounded-lg p-3">
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => toggleFolder(folder._id)}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      {expandedFolders[folder._id] ? (
+                        <ChevronDown size={20} />
+                      ) : (
+                        <ChevronRight size={20} />
+                      )}
+                    </button>
+                    <Folder size={20} className="text-blue-500" />
+                    <span className="font-medium">{folder.name}</span>
+                    <input
+                      type="file"
+                      ref={el => fileInputRef.current[folder._id] = el}
+                      onChange={(e) => handleFileUpload(e, folder._id)}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => fileInputRef.current[folder._id].click()}
+                      className="ml-2 text-gray-500 hover:text-gray-700"
+                    >
+                      <Upload size={16} />
+                    </button>
+                  </div>
+                  
+                  {expandedFolders[folder._id] && folder.files && (
+                    <div className="ml-8 mt-2 space-y-1">
+                      {folder.files.map(file => (
+                        <div key={file._id} className="flex items-center space-x-2 text-gray-600">
+                          <File size={16} />
+                          <span>{file.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
